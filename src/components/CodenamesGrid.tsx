@@ -4,7 +4,20 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 type CellColor = "yellow" | "green" | "black";
 
-type PersistedState = {
+type BoardConfig = {
+  gridSize: number;
+  numGood: number;
+  numBad: number;
+  seed: string;
+};
+
+type PersistedStateV2 = {
+  config: BoardConfig;
+  cells: CellColor[];
+  revealed: boolean[];
+};
+
+type PersistedStateLegacy = {
   cells?: CellColor[];
   revealed?: boolean[];
   numGood?: number;
@@ -86,76 +99,100 @@ function inferGridSizeFromCells(cells?: CellColor[]): number | null {
 }
 
 export default function CodenamesGrid() {
-  const [gridSize, setGridSize] = useState<number>(5);
-  const totalCells = gridSize * gridSize;
+  const [config, setConfig] = useState<BoardConfig>({ gridSize: 5, numGood: 9, numBad: 3, seed: "" });
+  const totalCells = config.gridSize * config.gridSize;
 
-  const [numGood, setNumGood] = useState<number>(9);
-  const [numBad, setNumBad] = useState<number>(3);
-  const [seed, setSeed] = useState<string>("");
   const [cells, setCells] = useState<CellColor[]>(() => Array.from({ length: 25 }, () => "yellow" as CellColor));
   const [revealed, setRevealed] = useState<boolean[]>(() => Array(25).fill(false));
   const [isLoaded, setIsLoaded] = useState<boolean>(false);
+  const [skipNextRegen, setSkipNextRegen] = useState<boolean>(false);
 
   const numNeutral = useMemo(() => {
-    const remaining = totalCells - numGood - numBad;
+    const remaining = totalCells - config.numGood - config.numBad;
     return remaining >= 0 ? remaining : 0;
-  }, [totalCells, numGood, numBad]);
+  }, [totalCells, config.numGood, config.numBad]);
 
-  // Load saved state on mount; if none, generate fresh and mark loaded
+  // Load saved state on mount; migrate legacy saves if necessary
   useEffect(() => {
     try {
       const raw = typeof window !== "undefined" ? window.localStorage.getItem(STORAGE_KEY) : null;
       if (raw) {
-        const parsed = JSON.parse(raw) as PersistedState;
-        const savedSize = parsed.gridSize ?? inferGridSizeFromCells(parsed.cells) ?? 5;
-        const expected = savedSize * savedSize;
-        if (
-          parsed &&
-          Array.isArray(parsed.cells) &&
-          parsed.cells.length === expected &&
-          Array.isArray(parsed.revealed) &&
-          parsed.revealed.length === expected
-        ) {
-          setGridSize(savedSize);
-          setSeed(parsed.seed ?? randomSeed());
-          setCells(parsed.cells);
-          setRevealed(parsed.revealed);
-          const good = parsed.cells.filter((c) => c === "green").length;
-          const bad = parsed.cells.filter((c) => c === "black").length;
-          setNumGood(good);
-          setNumBad(bad);
-          setIsLoaded(true);
-          return;
+        const parsed = JSON.parse(raw) as PersistedStateV2 | PersistedStateLegacy;
+        if (parsed && (parsed as PersistedStateV2).config) {
+          const v2 = parsed as PersistedStateV2;
+          const expected = v2.config.gridSize * v2.config.gridSize;
+          if (Array.isArray(v2.cells) && v2.cells.length === expected && Array.isArray(v2.revealed) && v2.revealed.length === expected) {
+            setConfig(v2.config);
+            setCells(v2.cells);
+            setRevealed(v2.revealed);
+            setSkipNextRegen(true);
+            setIsLoaded(true);
+            return;
+          }
+        } else {
+          const legacy = parsed as PersistedStateLegacy;
+          const savedSize = legacy.gridSize ?? inferGridSizeFromCells(legacy.cells) ?? 5;
+          const expected = savedSize * savedSize;
+          if (
+            legacy &&
+            Array.isArray(legacy.cells) && legacy.cells.length === expected &&
+            Array.isArray(legacy.revealed) && legacy.revealed.length === expected
+          ) {
+            const seed = legacy.seed ?? randomSeed();
+            const numGood = legacy.numGood ?? legacy.cells.filter((c) => c === "green").length;
+            const numBad = legacy.numBad ?? legacy.cells.filter((c) => c === "black").length;
+            setConfig({ gridSize: savedSize, numGood, numBad, seed });
+            setCells(legacy.cells);
+            setRevealed(legacy.revealed);
+            setSkipNextRegen(true);
+            setIsLoaded(true);
+            return;
+          }
         }
       }
       // Fallback: generate a new grid when nothing valid is saved
-      const s = randomSeed();
-      setSeed(s);
-      setCells(generateGrid(numGood, numBad, totalCells, s));
-      setRevealed(Array(totalCells).fill(false));
+      const seed = randomSeed();
+      const initial = { gridSize: 5, numGood: 9, numBad: 3, seed } satisfies BoardConfig;
+      setConfig(initial);
+      setCells(generateGrid(initial.numGood, initial.numBad, initial.gridSize * initial.gridSize, initial.seed));
+      setRevealed(Array(initial.gridSize * initial.gridSize).fill(false));
+      setSkipNextRegen(true);
       setIsLoaded(true);
     } catch {
-      const s = randomSeed();
-      setSeed(s);
-      setCells(generateGrid(numGood, numBad, totalCells, s));
-      setRevealed(Array(totalCells).fill(false));
+      const seed = randomSeed();
+      const initial = { gridSize: 5, numGood: 9, numBad: 3, seed } satisfies BoardConfig;
+      setConfig(initial);
+      setCells(generateGrid(initial.numGood, initial.numBad, initial.gridSize * initial.gridSize, initial.seed));
+      setRevealed(Array(initial.gridSize * initial.gridSize).fill(false));
+      setSkipNextRegen(true);
       setIsLoaded(true);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Regenerate grid whenever config changes (after initial load or when not skipping)
+  useEffect(() => {
+    if (!isLoaded) return;
+    if (skipNextRegen) {
+      setSkipNextRegen(false);
+      return;
+    }
+    setCells(generateGrid(config.numGood, config.numBad, totalCells, config.seed || "default"));
+    setRevealed(Array(totalCells).fill(false));
+  }, [isLoaded, skipNextRegen, config, totalCells]);
+
   // Persist state whenever it changes after initial load
   useEffect(() => {
     if (!isLoaded) return;
     try {
-      const payload: PersistedState = { cells, revealed, numGood, numBad, gridSize, seed };
+      const payload: PersistedStateV2 = { config, cells, revealed };
       if (typeof window !== "undefined") {
         window.localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
       }
     } catch {
       // ignore quota/json errors
     }
-  }, [isLoaded, cells, revealed, numGood, numBad, gridSize, seed]);
+  }, [isLoaded, config, cells, revealed]);
 
   const resetMarks = useCallback(() => {
     setRevealed(Array(totalCells).fill(false));
@@ -165,22 +202,18 @@ export default function CodenamesGrid() {
     const parsed = Number.parseInt(value, 10);
     if (Number.isNaN(parsed)) return;
     const clamped = clamp(parsed, 0, totalCells);
-    const maxGoodGivenBad = totalCells - numBad;
+    const maxGoodGivenBad = totalCells - config.numBad;
     const nextGood = clamp(clamped, 0, maxGoodGivenBad);
-    setNumGood(nextGood);
-    setCells(generateGrid(nextGood, numBad, totalCells, seed || "default"));
-    setRevealed(Array(totalCells).fill(false));
+    setConfig((c) => ({ ...c, numGood: nextGood }));
   }
 
   function onChangeBad(value: string) {
     const parsed = Number.parseInt(value, 10);
     if (Number.isNaN(parsed)) return;
     const clamped = clamp(parsed, 0, totalCells);
-    const maxBadGivenGood = totalCells - numGood;
+    const maxBadGivenGood = totalCells - config.numGood;
     const nextBad = clamp(clamped, 0, maxBadGivenGood);
-    setNumBad(nextBad);
-    setCells(generateGrid(numGood, nextBad, totalCells, seed || "default"));
-    setRevealed(Array(totalCells).fill(false));
+    setConfig((c) => ({ ...c, numBad: nextBad }));
   }
 
   function onChangeGridSize(value: string) {
@@ -189,26 +222,18 @@ export default function CodenamesGrid() {
     const nextSize = clamp(parsed, 2, 10);
     const nextTotal = nextSize * nextSize;
     // Clamp counts to new capacity
-    const nextGood = clamp(numGood, 0, nextTotal);
-    const nextBad = clamp(numBad, 0, nextTotal - nextGood);
-    setGridSize(nextSize);
-    setNumGood(nextGood);
-    setNumBad(nextBad);
-    setCells(generateGrid(nextGood, nextBad, nextTotal, seed || "default"));
-    setRevealed(Array(nextTotal).fill(false));
+    const nextGood = clamp(config.numGood, 0, nextTotal);
+    const nextBad = clamp(config.numBad, 0, nextTotal - nextGood);
+    setConfig((c) => ({ ...c, gridSize: nextSize, numGood: nextGood, numBad: nextBad }));
   }
 
   function onSeedChange(nextSeed: string) {
-    setSeed(nextSeed);
-    setCells(generateGrid(numGood, numBad, totalCells, nextSeed || "default"));
-    setRevealed(Array(totalCells).fill(false));
+    setConfig((c) => ({ ...c, seed: nextSeed }));
   }
 
   function onRandomizeSeed() {
     const s = randomSeed();
-    setSeed(s);
-    setCells(generateGrid(numGood, numBad, totalCells, s));
-    setRevealed(Array(totalCells).fill(false));
+    setConfig((c) => ({ ...c, seed: s }));
   }
 
   function toggleCell(index: number) {
@@ -232,7 +257,7 @@ export default function CodenamesGrid() {
               type="number"
               min={2}
               max={10}
-              value={gridSize}
+              value={config.gridSize}
               onChange={(e) => onChangeGridSize(e.target.value)}
               className="w-24 h-10 rounded border border-black/[.08] dark:border-white/[.145] bg-transparent px-3"
             />
@@ -242,7 +267,7 @@ export default function CodenamesGrid() {
             <input
               type="text"
               inputMode="text"
-              value={seed}
+              value={config.seed}
               onChange={(e) => onSeedChange(e.target.value)}
               className="w-40 h-10 rounded border border-black/[.08] dark:border-white/[.145] bg-transparent px-3"
               placeholder="e.g. game-night-1"
@@ -254,7 +279,7 @@ export default function CodenamesGrid() {
               type="number"
               min={0}
               max={totalCells}
-              value={numGood}
+              value={config.numGood}
               onChange={(e) => onChangeGood(e.target.value)}
               className="w-24 h-10 rounded border border-black/[.08] dark:border-white/[.145] bg-transparent px-3"
             />
@@ -265,7 +290,7 @@ export default function CodenamesGrid() {
               type="number"
               min={0}
               max={totalCells}
-              value={numBad}
+              value={config.numBad}
               onChange={(e) => onChangeBad(e.target.value)}
               className="w-24 h-10 rounded border border-black/[.08] dark:border-white/[.145] bg-transparent px-3"
             />
@@ -294,13 +319,13 @@ export default function CodenamesGrid() {
       </details>
 
       {!isLoaded ? (
-        <div className="grid gap-2 sm:gap-3 opacity-40 select-none" style={{ gridTemplateColumns: `repeat(${gridSize}, minmax(0, 1fr))` }}>
+        <div className="grid gap-2 sm:gap-3 opacity-40 select-none" style={{ gridTemplateColumns: `repeat(${config.gridSize}, minmax(0, 1fr))` }}>
           {Array.from({ length: totalCells }).map((_, i) => (
             <div key={i} className="bg-zinc-300 w-16 h-16 sm:w-20 sm:h-20 md:w-24 md:h-24 rounded" />
           ))}
         </div>
       ) : (
-        <div className="grid gap-2 sm:gap-3" style={{ gridTemplateColumns: `repeat(${gridSize}, minmax(0, 1fr))` }}>
+        <div className="grid gap-2 sm:gap-3" style={{ gridTemplateColumns: `repeat(${config.gridSize}, minmax(0, 1fr))` }}>
           {cells.map((color, index) => {
             const bgClass =
               color === "green"

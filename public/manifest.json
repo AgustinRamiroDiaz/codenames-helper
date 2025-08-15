@@ -1,0 +1,13 @@
+{
+  "name": "Codenames Helper",
+  "short_name": "Codenames",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#0a0a0a",
+  "description": "Generate randomized 5x5 codenames grids and track revealed squares.",
+  "icons": [
+    { "src": "/favicon.ico", "sizes": "48x48 64x64 128x128 256x256", "type": "image/x-icon" }
+  ]
+} 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 type CellColor = "yellow" | "green" | "black";
 
@@ -244,10 +244,6 @@ export default function CodenamesGrid() {
     } catch {}
   }, [isLoaded, config, cells, revealed]);
 
-  const resetMarks = useCallback(() => {
-    setRevealed(Array(totalCells).fill(false));
-  }, [totalCells]);
-
   function onChangeGood(value: string) {
     const parsed = Number.parseInt(value, 10);
     if (Number.isNaN(parsed)) return;
@@ -311,14 +307,25 @@ export default function CodenamesGrid() {
       <div className="w-full flex flex-wrap gap-4 items-end justify-center">
         <div className="flex flex-col gap-1">
           <label className="text-sm">Seed</label>
-          <input
-            type="text"
-            inputMode="text"
-            value={config.seed}
-            onChange={(e) => onSeedChange(e.target.value)}
-            className="w-40 h-10 rounded border border-black/[.08] dark:border-white/[.145] bg-transparent px-3"
-            placeholder="e.g. game-night-1"
-          />
+          <div className="flex items-center gap-2">
+            <input
+              type="text"
+              inputMode="text"
+              value={config.seed}
+              onChange={(e) => onSeedChange(e.target.value)}
+              className="w-40 h-10 rounded border border-black/[.08] dark:border-white/[.145] bg-transparent px-3"
+              placeholder="e.g. game-night-1"
+            />
+            <button
+              type="button"
+              onClick={onRandomizeSeed}
+              aria-label="Randomize seed"
+              title="Randomize seed"
+              className="h-10 w-10 rounded border border-black/[.08] dark:border-white/[.145] text-sm font-medium hover:bg-black/[.04] dark:hover:bg-white/[.06]"
+            >
+              ↻
+            </button>
+          </div>
         </div>
         <div className="flex flex-col gap-1">
           <label className="text-sm">Side</label>
@@ -394,20 +401,6 @@ export default function CodenamesGrid() {
               {numNeutral}
             </div>
           </div>
-          <button
-            type="button"
-            onClick={onRandomizeSeed}
-            className="h-10 px-4 rounded border border-black/[.08] dark:border-white/[.145] text-sm font-medium hover:bg-black/[.04] dark:hover:bg-white/[.06]"
-          >
-            Randomize seed
-          </button>
-          <button
-            type="button"
-            onClick={resetMarks}
-            className="h-10 px-4 rounded border border-black/[.08] dark:border-white/[.145] text-sm font-medium hover:bg-black/[.04] dark:hover:bg-white/[.06]"
-          >
-            Reset marks
-          </button>
         </div>
       </details>
 

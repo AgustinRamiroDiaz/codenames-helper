@@ -70,14 +70,33 @@ function seedToRng(seed: string): () => number {
 }
 
 function randomSeed(): string {
+  let n: number;
   try {
-    const a = new Uint32Array(2);
+    const a = new Uint32Array(1);
     if (typeof window !== "undefined" && window.crypto && window.crypto.getRandomValues) {
       window.crypto.getRandomValues(a);
-      return (a[0].toString(36) + a[1].toString(36)).slice(0, 12);
+      n = a[0] >>> 0;
+    } else {
+      n = Math.floor(Math.random() * 0xffffffff);
     }
-  } catch {}
-  return Math.random().toString(36).slice(2, 14);
+  } catch {
+    n = Math.floor(Math.random() * 0xffffffff);
+  }
+  const mod = n % Math.pow(36, 4);
+  return mod.toString(36).padStart(4, "0");
+}
+
+// Create a 3-letter digest of the configuration (excluding `side`)
+function configDigest(cfg: BoardConfig): string {
+  const key = `${cfg.gridSize}|${cfg.numGood}|${cfg.numBad}|${cfg.overlapGreens}|${cfg.seed}`;
+  const h = xfnv1a(key);
+  let n = h >>> 0;
+  let out = "";
+  for (let i = 0; i < 3; i += 1) {
+    out += String.fromCharCode(65 + (n % 26));
+    n = Math.floor(n / 26);
+  }
+  return out;
 }
 
 function generateSideA(numGood: number, numBad: number, totalCells: number, seed: string): CellColor[] {
@@ -167,6 +186,8 @@ export default function CodenamesGrid() {
     const remaining = totalCells - config.numGood - config.numBad;
     return remaining >= 0 ? remaining : 0;
   }, [totalCells, config.numGood, config.numBad]);
+
+  const digest = useMemo(() => configDigest(config), [config]);
 
   useEffect(() => {
     try {
@@ -342,6 +363,12 @@ export default function CodenamesGrid() {
             />
             <span className="text-xs opacity-70">B</span>
             <div className="text-sm w-5 text-center">{config.side}</div>
+          </div>
+        </div>
+        <div className="flex flex-col gap-1 min-w-24">
+          <label className="text-sm">Config hash</label>
+          <div className="h-10 px-3 rounded border border-black/[.08] dark:border-white/[.145] flex items-center justify-center text-sm font-mono">
+            {digest}
           </div>
         </div>
       </div>

@@ -78,50 +78,55 @@ export default function CodenamesGrid() {
 
   return (
     <div className="w-full max-w-[720px] flex flex-col gap-6 items-center">
-      <div className="flex flex-wrap gap-4 items-end justify-center">
-        <div className="flex flex-col gap-1">
-          <label className="text-sm">Good (green)</label>
-          <input
-            type="number"
-            min={0}
-            max={TOTAL_CELLS}
-            value={numGood}
-            onChange={(e) => onChangeGood(e.target.value)}
-            className="w-24 h-10 rounded border border-black/[.08] dark:border-white/[.145] bg-transparent px-3"
-          />
-        </div>
-        <div className="flex flex-col gap-1">
-          <label className="text-sm">Bad (black)</label>
-          <input
-            type="number"
-            min={0}
-            max={TOTAL_CELLS}
-            value={numBad}
-            onChange={(e) => onChangeBad(e.target.value)}
-            className="w-24 h-10 rounded border border-black/[.08] dark:border-white/[.145] bg-transparent px-3"
-          />
-        </div>
-        <div className="flex flex-col gap-1 min-w-24">
-          <span className="text-sm">Neutral (yellow)</span>
-          <div className="h-10 flex items-center px-3 rounded border border-dashed border-black/[.08] dark:border-white/[.145]">
-            {numNeutral}
+      <details className="w-full">
+        <summary className="cursor-pointer select-none h-10 px-4 rounded border border-black/[.08] dark:border-white/[.145] inline-flex items-center justify-between text-sm font-medium">
+          Options
+        </summary>
+        <div className="mt-4 flex flex-wrap gap-4 items-end justify-center">
+          <div className="flex flex-col gap-1">
+            <label className="text-sm">Good (green)</label>
+            <input
+              type="number"
+              min={0}
+              max={TOTAL_CELLS}
+              value={numGood}
+              onChange={(e) => onChangeGood(e.target.value)}
+              className="w-24 h-10 rounded border border-black/[.08] dark:border-white/[.145] bg-transparent px-3"
+            />
           </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-sm">Bad (red)</label>
+            <input
+              type="number"
+              min={0}
+              max={TOTAL_CELLS}
+              value={numBad}
+              onChange={(e) => onChangeBad(e.target.value)}
+              className="w-24 h-10 rounded border border-black/[.08] dark:border-white/[.145] bg-transparent px-3"
+            />
+          </div>
+          <div className="flex flex-col gap-1 min-w-24">
+            <span className="text-sm">Neutral (yellow)</span>
+            <div className="h-10 flex items-center px-3 rounded border border-dashed border-black/[.08] dark:border-white/[.145]">
+              {numNeutral}
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={regenerate}
+            className="h-10 px-4 rounded bg-foreground text-background text-sm font-medium hover:opacity-90"
+          >
+            Regenerate
+          </button>
+          <button
+            type="button"
+            onClick={resetMarks}
+            className="h-10 px-4 rounded border border-black/[.08] dark:border-white/[.145] text-sm font-medium hover:bg-black/[.04] dark:hover:bg-white/[.06]"
+          >
+            Reset marks
+          </button>
         </div>
-        <button
-          type="button"
-          onClick={regenerate}
-          className="h-10 px-4 rounded bg-foreground text-background text-sm font-medium hover:opacity-90"
-        >
-          Regenerate
-        </button>
-        <button
-          type="button"
-          onClick={resetMarks}
-          className="h-10 px-4 rounded border border-black/[.08] dark:border-white/[.145] text-sm font-medium hover:bg-black/[.04] dark:hover:bg-white/[.06]"
-        >
-          Reset marks
-        </button>
-      </div>
+      </details>
 
       <div className="grid grid-cols-5 gap-2 sm:gap-3">
         {cells.map((color, index) => {
@@ -129,7 +134,7 @@ export default function CodenamesGrid() {
             color === "green"
               ? "bg-green-500"
               : color === "black"
-              ? "bg-black"
+              ? "bg-red-500"
               : "bg-yellow-400";
           const stateClass = revealed[index]
             ? "opacity-55 ring-2 ring-white/70 dark:ring-white/40"

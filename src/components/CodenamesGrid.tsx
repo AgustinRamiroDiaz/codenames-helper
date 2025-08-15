@@ -94,11 +94,9 @@ function generateSideA(numGood: number, numBad: number, totalCells: number, seed
 }
 
 function generateSideB(numGood: number, numBad: number, totalCells: number, seed: string): CellColor[] {
-  // 1) Create side A deterministically and use its colors as the pool
   const base = generateSideA(numGood, numBad, totalCells, seed);
   let pool: CellColor[] = base.slice();
 
-  // 2) Pick 3 random green indices deterministically and pin them in the new board
   const greenIndices: number[] = [];
   for (let i = 0; i < base.length; i += 1) {
     if (base[i] === "green") greenIndices.push(i);
@@ -110,32 +108,27 @@ function generateSideB(numGood: number, numBad: number, totalCells: number, seed
 
   const result: (CellColor | undefined)[] = new Array(totalCells).fill(undefined);
 
-  // Place pinned greens and consume greens from the pool
   for (const idx of pinnedIndices) {
     result[idx] = "green";
     const poolGreenIdx = pool.findIndex((c) => c === "green");
     if (poolGreenIdx !== -1) pool.splice(poolGreenIdx, 1);
   }
 
-  // 3) Deterministically shuffle the rest of the pool
   const rngPool1 = seedToRng(seed + "|pool1");
   pool = shuffleArraySeeded(pool, rngPool1);
 
-  // 4) Replace the rest of the green positions (not pinned) with non-green items from the pool
   for (let i = 0; i < base.length; i += 1) {
     if (base[i] === "green" && !pinnedIndexSet.has(i)) {
       let takeIdx = pool.findIndex((c) => c !== "green");
-      if (takeIdx === -1) takeIdx = 0; // fallback if pool has only greens
+      if (takeIdx === -1) takeIdx = 0;
       const item = pool.splice(takeIdx, 1)[0];
       result[i] = item;
     }
   }
 
-  // 5) Deterministically shuffle the rest of the pool again
   const rngPool2 = seedToRng(seed + "|pool2");
   pool = shuffleArraySeeded(pool, rngPool2);
 
-  // 6) Fill the rest of the board with the remaining pool
   for (let i = 0; i < result.length; i += 1) {
     if (result[i] === undefined) {
       const item = pool.shift();
@@ -174,7 +167,6 @@ export default function CodenamesGrid() {
     return remaining >= 0 ? remaining : 0;
   }, [totalCells, config.numGood, config.numBad]);
 
-  // Load saved state on mount; migrate legacy saves if necessary
   useEffect(() => {
     try {
       const raw = typeof window !== "undefined" ? window.localStorage.getItem(STORAGE_KEY) : null;
@@ -213,7 +205,6 @@ export default function CodenamesGrid() {
           }
         }
       }
-      // Fallback: generate a new grid when nothing valid is saved
       const seed = randomSeed();
       const initial: BoardConfig = { gridSize: 5, numGood: 9, numBad: 3, seed, side: "A" };
       setConfig(initial);
@@ -230,10 +221,8 @@ export default function CodenamesGrid() {
       setSkipNextRegen(true);
       setIsLoaded(true);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Regenerate grid whenever config changes (after initial load or when not skipping)
   useEffect(() => {
     if (!isLoaded) return;
     if (skipNextRegen) {
@@ -244,7 +233,6 @@ export default function CodenamesGrid() {
     setRevealed(Array(totalCells).fill(false));
   }, [isLoaded, skipNextRegen, config, totalCells]);
 
-  // Persist state whenever it changes after initial load
   useEffect(() => {
     if (!isLoaded) return;
     try {
@@ -252,9 +240,7 @@ export default function CodenamesGrid() {
       if (typeof window !== "undefined") {
         window.localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
       }
-    } catch {
-      // ignore quota/json errors
-    }
+    } catch {}
   }, [isLoaded, config, cells, revealed]);
 
   const resetMarks = useCallback(() => {
@@ -284,7 +270,6 @@ export default function CodenamesGrid() {
     if (Number.isNaN(parsed)) return;
     const nextSize = clamp(parsed, 2, 10);
     const nextTotal = nextSize * nextSize;
-    // Clamp counts to new capacity
     const nextGood = clamp(config.numGood, 0, nextTotal);
     const nextBad = clamp(config.numBad, 0, nextTotal - nextGood);
     setConfig((c) => ({ ...c, gridSize: nextSize, numGood: nextGood, numBad: nextBad }));
@@ -314,6 +299,37 @@ export default function CodenamesGrid() {
 
   return (
     <div className="w-full max-w-[720px] flex flex-col gap-6 items-center">
+      <div className="w-full flex flex-wrap gap-4 items-end justify-center">
+        <div className="flex flex-col gap-1">
+          <label className="text-sm">Seed</label>
+          <input
+            type="text"
+            inputMode="text"
+            value={config.seed}
+            onChange={(e) => onSeedChange(e.target.value)}
+            className="w-40 h-10 rounded border border-black/[.08] dark:border-white/[.145] bg-transparent px-3"
+            placeholder="e.g. game-night-1"
+          />
+        </div>
+        <div className="flex flex-col gap-1">
+          <label className="text-sm">Side</label>
+          <div className="flex items-center gap-3">
+            <span className="text-xs opacity-70">A</span>
+            <input
+              type="range"
+              min={0}
+              max={1}
+              step={1}
+              value={config.side === "A" ? 0 : 1}
+              onChange={(e) => onChangeSide(e.target.value === "1" ? "B" : "A")}
+              className="w-36 h-2 accent-foreground"
+            />
+            <span className="text-xs opacity-70">B</span>
+            <div className="text-sm w-5 text-center">{config.side}</div>
+          </div>
+        </div>
+      </div>
+
       <details className="w-full">
         <summary className="cursor-pointer select-none h-10 px-4 rounded border border-black/[.08] dark:border-white/[.145] inline-flex items-center justify-between text-sm font-medium">
           Options
@@ -329,28 +345,6 @@ export default function CodenamesGrid() {
               onChange={(e) => onChangeGridSize(e.target.value)}
               className="w-24 h-10 rounded border border-black/[.08] dark:border-white/[.145] bg-transparent px-3"
             />
-          </div>
-          <div className="flex flex-col gap-1">
-            <label className="text-sm">Seed</label>
-            <input
-              type="text"
-              inputMode="text"
-              value={config.seed}
-              onChange={(e) => onSeedChange(e.target.value)}
-              className="w-40 h-10 rounded border border-black/[.08] dark:border-white/[.145] bg-transparent px-3"
-              placeholder="e.g. game-night-1"
-            />
-          </div>
-          <div className="flex flex-col gap-1">
-            <label className="text-sm">Side</label>
-            <select
-              value={config.side}
-              onChange={(e) => onChangeSide(e.target.value)}
-              className="w-28 h-10 rounded border border-black/[.08] dark:border-white/[.145] bg-transparent px-3"
-            >
-              <option value="A">A</option>
-              <option value="B">B</option>
-            </select>
           </div>
           <div className="flex flex-col gap-1">
             <label className="text-sm">Good (green)</label>

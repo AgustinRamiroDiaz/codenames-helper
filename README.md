@@ -1,4 +1,14 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Codenames Helper
+
+A simple helper for the game of Codenames.
+
+[Play it here](https://agustinramirodiaz.github.io/codenames-helper/)
+
+## Features
+
+- Generate a random grid of cells
+- Toggle them on and off
+
 
 ## Getting Started
 

@@ -12,6 +12,7 @@ type BoardConfig = {
   numBad: number;
   seed: string;
   side: Side;
+  overlapGreens: number;
 };
 
 type PersistedStateV2 = {
@@ -93,7 +94,7 @@ function generateSideA(numGood: number, numBad: number, totalCells: number, seed
   return shuffleArraySeeded(cells, rng);
 }
 
-function generateSideB(numGood: number, numBad: number, totalCells: number, seed: string): CellColor[] {
+function generateSideB(numGood: number, numBad: number, totalCells: number, seed: string, overlapGreens: number): CellColor[] {
   const base = generateSideA(numGood, numBad, totalCells, seed);
   let pool: CellColor[] = base.slice();
 
@@ -101,7 +102,7 @@ function generateSideB(numGood: number, numBad: number, totalCells: number, seed
   for (let i = 0; i < base.length; i += 1) {
     if (base[i] === "green") greenIndices.push(i);
   }
-  const pinsToSelect = Math.min(3, greenIndices.length);
+  const pinsToSelect = Math.min(overlapGreens, greenIndices.length);
   const rngPins = seedToRng(seed + "|pins");
   const pinnedIndices = shuffleArraySeeded(greenIndices, rngPins).slice(0, pinsToSelect);
   const pinnedIndexSet = new Set(pinnedIndices);
@@ -139,9 +140,9 @@ function generateSideB(numGood: number, numBad: number, totalCells: number, seed
   return result as CellColor[];
 }
 
-function generateGrid(numGood: number, numBad: number, totalCells: number, seed: string, side: Side): CellColor[] {
+function generateGrid(numGood: number, numBad: number, totalCells: number, seed: string, side: Side, overlapGreens: number): CellColor[] {
   return side === "B"
-    ? generateSideB(numGood, numBad, totalCells, seed)
+    ? generateSideB(numGood, numBad, totalCells, seed, overlapGreens)
     : generateSideA(numGood, numBad, totalCells, seed);
 }
 
@@ -154,7 +155,7 @@ function inferGridSizeFromCells(cells?: CellColor[]): number | null {
 }
 
 export default function CodenamesGrid() {
-  const [config, setConfig] = useState<BoardConfig>({ gridSize: 5, numGood: 9, numBad: 3, seed: "", side: "A" });
+  const [config, setConfig] = useState<BoardConfig>({ gridSize: 5, numGood: 9, numBad: 3, seed: "", side: "A", overlapGreens: 3 });
   const totalCells = config.gridSize * config.gridSize;
 
   const [cells, setCells] = useState<CellColor[]>(() => Array.from({ length: 25 }, () => "yellow" as CellColor));
@@ -174,7 +175,7 @@ export default function CodenamesGrid() {
         const parsed = JSON.parse(raw) as PersistedStateV2 | PersistedStateLegacy;
         if (parsed && (parsed as PersistedStateV2).config) {
           const v2 = parsed as PersistedStateV2;
-          const cfg: BoardConfig = { ...v2.config, side: (v2.config as Partial<BoardConfig>).side ?? "A" };
+          const cfg: BoardConfig = { ...v2.config, side: (v2.config as Partial<BoardConfig>).side ?? "A", overlapGreens: (v2.config as Partial<BoardConfig>).overlapGreens ?? 3 } as BoardConfig;
           const expected = cfg.gridSize * cfg.gridSize;
           if (Array.isArray(v2.cells) && v2.cells.length === expected && Array.isArray(v2.revealed) && v2.revealed.length === expected) {
             setConfig(cfg);
@@ -196,7 +197,7 @@ export default function CodenamesGrid() {
             const seed = legacy.seed ?? randomSeed();
             const numGood = legacy.numGood ?? legacy.cells.filter((c) => c === "green").length;
             const numBad = legacy.numBad ?? legacy.cells.filter((c) => c === "black").length;
-            setConfig({ gridSize: savedSize, numGood, numBad, seed, side: "A" });
+            setConfig({ gridSize: savedSize, numGood, numBad, seed, side: "A", overlapGreens: 3 });
             setCells(legacy.cells);
             setRevealed(legacy.revealed);
             setSkipNextRegen(true);
@@ -206,17 +207,17 @@ export default function CodenamesGrid() {
         }
       }
       const seed = randomSeed();
-      const initial: BoardConfig = { gridSize: 5, numGood: 9, numBad: 3, seed, side: "A" };
+      const initial: BoardConfig = { gridSize: 5, numGood: 9, numBad: 3, seed, side: "A", overlapGreens: 3 };
       setConfig(initial);
-      setCells(generateGrid(initial.numGood, initial.numBad, initial.gridSize * initial.gridSize, initial.seed, initial.side));
+      setCells(generateGrid(initial.numGood, initial.numBad, initial.gridSize * initial.gridSize, initial.seed, initial.side, initial.overlapGreens));
       setRevealed(Array(initial.gridSize * initial.gridSize).fill(false));
       setSkipNextRegen(true);
       setIsLoaded(true);
     } catch {
       const seed = randomSeed();
-      const initial: BoardConfig = { gridSize: 5, numGood: 9, numBad: 3, seed, side: "A" };
+      const initial: BoardConfig = { gridSize: 5, numGood: 9, numBad: 3, seed, side: "A", overlapGreens: 3 };
       setConfig(initial);
-      setCells(generateGrid(initial.numGood, initial.numBad, initial.gridSize * initial.gridSize, initial.seed, initial.side));
+      setCells(generateGrid(initial.numGood, initial.numBad, initial.gridSize * initial.gridSize, initial.seed, initial.side, initial.overlapGreens));
       setRevealed(Array(initial.gridSize * initial.gridSize).fill(false));
       setSkipNextRegen(true);
       setIsLoaded(true);
@@ -229,7 +230,7 @@ export default function CodenamesGrid() {
       setSkipNextRegen(false);
       return;
     }
-    setCells(generateGrid(config.numGood, config.numBad, totalCells, config.seed || "default", config.side));
+    setCells(generateGrid(config.numGood, config.numBad, totalCells, config.seed || "default", config.side, config.overlapGreens));
     setRevealed(Array(totalCells).fill(false));
   }, [isLoaded, skipNextRegen, config, totalCells]);
 
@@ -272,7 +273,8 @@ export default function CodenamesGrid() {
     const nextTotal = nextSize * nextSize;
     const nextGood = clamp(config.numGood, 0, nextTotal);
     const nextBad = clamp(config.numBad, 0, nextTotal - nextGood);
-    setConfig((c) => ({ ...c, gridSize: nextSize, numGood: nextGood, numBad: nextBad }));
+    const nextOverlap = clamp(config.overlapGreens, 0, nextGood);
+    setConfig((c) => ({ ...c, gridSize: nextSize, numGood: nextGood, numBad: nextBad, overlapGreens: nextOverlap }));
   }
 
   function onSeedChange(nextSeed: string) {
@@ -287,6 +289,13 @@ export default function CodenamesGrid() {
   function onChangeSide(nextSide: string) {
     const side = nextSide === "B" ? "B" : "A";
     setConfig((c) => ({ ...c, side }));
+  }
+
+  function onChangeOverlap(value: string) {
+    const parsed = Number.parseInt(value, 10);
+    if (Number.isNaN(parsed)) return;
+    const clampedVal = clamp(parsed, 0, config.numGood);
+    setConfig((c) => ({ ...c, overlapGreens: clampedVal }));
   }
 
   function toggleCell(index: number) {
@@ -365,6 +374,17 @@ export default function CodenamesGrid() {
               max={totalCells}
               value={config.numBad}
               onChange={(e) => onChangeBad(e.target.value)}
+              className="w-24 h-10 rounded border border-black/[.08] dark:border-white/[.145] bg-transparent px-3"
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-sm">Overlap greens (A∩B)</label>
+            <input
+              type="number"
+              min={0}
+              max={config.numGood}
+              value={config.overlapGreens}
+              onChange={(e) => onChangeOverlap(e.target.value)}
               className="w-24 h-10 rounded border border-black/[.08] dark:border-white/[.145] bg-transparent px-3"
             />
           </div>

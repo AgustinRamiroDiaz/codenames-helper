@@ -4,11 +4,14 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 type CellColor = "yellow" | "green" | "black";
 
+type Side = "A" | "B";
+
 type BoardConfig = {
   gridSize: number;
   numGood: number;
   numBad: number;
   seed: string;
+  side: Side;
 };
 
 type PersistedStateV2 = {
@@ -76,7 +79,7 @@ function randomSeed(): string {
   return Math.random().toString(36).slice(2, 14);
 }
 
-function generateGrid(numGood: number, numBad: number, totalCells: number, seed: string): CellColor[] {
+function generateSideA(numGood: number, numBad: number, totalCells: number, seed: string): CellColor[] {
   const clampedGood = clamp(numGood, 0, totalCells);
   const clampedBad = clamp(numBad, 0, totalCells - clampedGood);
   const numNeutral = totalCells - clampedGood - clampedBad;
@@ -86,8 +89,67 @@ function generateGrid(numGood: number, numBad: number, totalCells: number, seed:
   for (let i = 0; i < clampedBad; i += 1) cells.push("black");
   for (let i = 0; i < numNeutral; i += 1) cells.push("yellow");
 
-  const rng = seedToRng(seed);
+  const rng = seedToRng(seed + "|A");
   return shuffleArraySeeded(cells, rng);
+}
+
+function generateSideB(numGood: number, numBad: number, totalCells: number, seed: string): CellColor[] {
+  // 1) Create side A deterministically and use its colors as the pool
+  const base = generateSideA(numGood, numBad, totalCells, seed);
+  let pool: CellColor[] = base.slice();
+
+  // 2) Pick 3 random green indices deterministically and pin them in the new board
+  const greenIndices: number[] = [];
+  for (let i = 0; i < base.length; i += 1) {
+    if (base[i] === "green") greenIndices.push(i);
+  }
+  const pinsToSelect = Math.min(3, greenIndices.length);
+  const rngPins = seedToRng(seed + "|pins");
+  const pinnedIndices = shuffleArraySeeded(greenIndices, rngPins).slice(0, pinsToSelect);
+  const pinnedIndexSet = new Set(pinnedIndices);
+
+  const result: (CellColor | undefined)[] = new Array(totalCells).fill(undefined);
+
+  // Place pinned greens and consume greens from the pool
+  for (const idx of pinnedIndices) {
+    result[idx] = "green";
+    const poolGreenIdx = pool.findIndex((c) => c === "green");
+    if (poolGreenIdx !== -1) pool.splice(poolGreenIdx, 1);
+  }
+
+  // 3) Deterministically shuffle the rest of the pool
+  const rngPool1 = seedToRng(seed + "|pool1");
+  pool = shuffleArraySeeded(pool, rngPool1);
+
+  // 4) Replace the rest of the green positions (not pinned) with non-green items from the pool
+  for (let i = 0; i < base.length; i += 1) {
+    if (base[i] === "green" && !pinnedIndexSet.has(i)) {
+      let takeIdx = pool.findIndex((c) => c !== "green");
+      if (takeIdx === -1) takeIdx = 0; // fallback if pool has only greens
+      const item = pool.splice(takeIdx, 1)[0];
+      result[i] = item;
+    }
+  }
+
+  // 5) Deterministically shuffle the rest of the pool again
+  const rngPool2 = seedToRng(seed + "|pool2");
+  pool = shuffleArraySeeded(pool, rngPool2);
+
+  // 6) Fill the rest of the board with the remaining pool
+  for (let i = 0; i < result.length; i += 1) {
+    if (result[i] === undefined) {
+      const item = pool.shift();
+      result[i] = (item ?? "yellow");
+    }
+  }
+
+  return result as CellColor[];
+}
+
+function generateGrid(numGood: number, numBad: number, totalCells: number, seed: string, side: Side): CellColor[] {
+  return side === "B"
+    ? generateSideB(numGood, numBad, totalCells, seed)
+    : generateSideA(numGood, numBad, totalCells, seed);
 }
 
 function inferGridSizeFromCells(cells?: CellColor[]): number | null {
@@ -99,7 +161,7 @@ function inferGridSizeFromCells(cells?: CellColor[]): number | null {
 }
 
 export default function CodenamesGrid() {
-  const [config, setConfig] = useState<BoardConfig>({ gridSize: 5, numGood: 9, numBad: 3, seed: "" });
+  const [config, setConfig] = useState<BoardConfig>({ gridSize: 5, numGood: 9, numBad: 3, seed: "", side: "A" });
   const totalCells = config.gridSize * config.gridSize;
 
   const [cells, setCells] = useState<CellColor[]>(() => Array.from({ length: 25 }, () => "yellow" as CellColor));
@@ -120,9 +182,10 @@ export default function CodenamesGrid() {
         const parsed = JSON.parse(raw) as PersistedStateV2 | PersistedStateLegacy;
         if (parsed && (parsed as PersistedStateV2).config) {
           const v2 = parsed as PersistedStateV2;
-          const expected = v2.config.gridSize * v2.config.gridSize;
+          const cfg: BoardConfig = { ...v2.config, side: (v2.config as Partial<BoardConfig>).side ?? "A" };
+          const expected = cfg.gridSize * cfg.gridSize;
           if (Array.isArray(v2.cells) && v2.cells.length === expected && Array.isArray(v2.revealed) && v2.revealed.length === expected) {
-            setConfig(v2.config);
+            setConfig(cfg);
             setCells(v2.cells);
             setRevealed(v2.revealed);
             setSkipNextRegen(true);
@@ -141,7 +204,7 @@ export default function CodenamesGrid() {
             const seed = legacy.seed ?? randomSeed();
             const numGood = legacy.numGood ?? legacy.cells.filter((c) => c === "green").length;
             const numBad = legacy.numBad ?? legacy.cells.filter((c) => c === "black").length;
-            setConfig({ gridSize: savedSize, numGood, numBad, seed });
+            setConfig({ gridSize: savedSize, numGood, numBad, seed, side: "A" });
             setCells(legacy.cells);
             setRevealed(legacy.revealed);
             setSkipNextRegen(true);
@@ -152,17 +215,17 @@ export default function CodenamesGrid() {
       }
       // Fallback: generate a new grid when nothing valid is saved
       const seed = randomSeed();
-      const initial = { gridSize: 5, numGood: 9, numBad: 3, seed } satisfies BoardConfig;
+      const initial: BoardConfig = { gridSize: 5, numGood: 9, numBad: 3, seed, side: "A" };
       setConfig(initial);
-      setCells(generateGrid(initial.numGood, initial.numBad, initial.gridSize * initial.gridSize, initial.seed));
+      setCells(generateGrid(initial.numGood, initial.numBad, initial.gridSize * initial.gridSize, initial.seed, initial.side));
       setRevealed(Array(initial.gridSize * initial.gridSize).fill(false));
       setSkipNextRegen(true);
       setIsLoaded(true);
     } catch {
       const seed = randomSeed();
-      const initial = { gridSize: 5, numGood: 9, numBad: 3, seed } satisfies BoardConfig;
+      const initial: BoardConfig = { gridSize: 5, numGood: 9, numBad: 3, seed, side: "A" };
       setConfig(initial);
-      setCells(generateGrid(initial.numGood, initial.numBad, initial.gridSize * initial.gridSize, initial.seed));
+      setCells(generateGrid(initial.numGood, initial.numBad, initial.gridSize * initial.gridSize, initial.seed, initial.side));
       setRevealed(Array(initial.gridSize * initial.gridSize).fill(false));
       setSkipNextRegen(true);
       setIsLoaded(true);
@@ -177,7 +240,7 @@ export default function CodenamesGrid() {
       setSkipNextRegen(false);
       return;
     }
-    setCells(generateGrid(config.numGood, config.numBad, totalCells, config.seed || "default"));
+    setCells(generateGrid(config.numGood, config.numBad, totalCells, config.seed || "default", config.side));
     setRevealed(Array(totalCells).fill(false));
   }, [isLoaded, skipNextRegen, config, totalCells]);
 
@@ -236,6 +299,11 @@ export default function CodenamesGrid() {
     setConfig((c) => ({ ...c, seed: s }));
   }
 
+  function onChangeSide(nextSide: string) {
+    const side = nextSide === "B" ? "B" : "A";
+    setConfig((c) => ({ ...c, side }));
+  }
+
   function toggleCell(index: number) {
     setRevealed((prev) => {
       const next = prev.slice();
@@ -272,6 +340,17 @@ export default function CodenamesGrid() {
               className="w-40 h-10 rounded border border-black/[.08] dark:border-white/[.145] bg-transparent px-3"
               placeholder="e.g. game-night-1"
             />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-sm">Side</label>
+            <select
+              value={config.side}
+              onChange={(e) => onChangeSide(e.target.value)}
+              className="w-28 h-10 rounded border border-black/[.08] dark:border-white/[.145] bg-transparent px-3"
+            >
+              <option value="A">A</option>
+              <option value="B">B</option>
+            </select>
           </div>
           <div className="flex flex-col gap-1">
             <label className="text-sm">Good (green)</label>

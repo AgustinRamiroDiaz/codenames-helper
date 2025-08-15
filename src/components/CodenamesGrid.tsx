@@ -36,15 +36,21 @@ export default function CodenamesGrid() {
   const [numGood, setNumGood] = useState<number>(9);
   const [numBad, setNumBad] = useState<number>(3);
   const [cells, setCells] = useState<CellColor[]>(() => generateGrid(9, 3));
+  const [revealed, setRevealed] = useState<boolean[]>(() => Array(TOTAL_CELLS).fill(false));
 
   const numNeutral = useMemo(() => {
     const remaining = TOTAL_CELLS - numGood - numBad;
     return remaining >= 0 ? remaining : 0;
   }, [numGood, numBad]);
 
+  const resetMarks = useCallback(() => {
+    setRevealed(Array(TOTAL_CELLS).fill(false));
+  }, []);
+
   const regenerate = useCallback(() => {
     setCells(generateGrid(numGood, numBad));
-  }, [numGood, numBad]);
+    resetMarks();
+  }, [numGood, numBad, resetMarks]);
 
   function onChangeGood(value: string) {
     const parsed = Number.parseInt(value, 10);
@@ -60,6 +66,14 @@ export default function CodenamesGrid() {
     const clamped = clamp(parsed, 0, TOTAL_CELLS);
     const maxBadGivenGood = TOTAL_CELLS - numGood;
     setNumBad(clamp(clamped, 0, maxBadGivenGood));
+  }
+
+  function toggleCell(index: number) {
+    setRevealed((prev) => {
+      const next = prev.slice();
+      next[index] = !next[index];
+      return next;
+    });
   }
 
   return (
@@ -100,6 +114,13 @@ export default function CodenamesGrid() {
         >
           Regenerate
         </button>
+        <button
+          type="button"
+          onClick={resetMarks}
+          className="h-10 px-4 rounded border border-black/[.08] dark:border-white/[.145] text-sm font-medium hover:bg-black/[.04] dark:hover:bg-white/[.06]"
+        >
+          Reset marks
+        </button>
       </div>
 
       <div className="grid grid-cols-5 gap-2 sm:gap-3">
@@ -110,11 +131,17 @@ export default function CodenamesGrid() {
               : color === "black"
               ? "bg-black"
               : "bg-yellow-400";
+          const stateClass = revealed[index]
+            ? "opacity-55 ring-2 ring-white/70 dark:ring-white/40"
+            : "hover:opacity-90";
 
           return (
-            <div
+            <button
               key={index}
-              className={`${bgClass} w-16 h-16 sm:w-20 sm:h-20 md:w-24 md:h-24 rounded shadow-sm border border-black/[.08] dark:border-white/[.145]`}
+              type="button"
+              aria-pressed={revealed[index]}
+              onClick={() => toggleCell(index)}
+              className={`${bgClass} ${stateClass} w-16 h-16 sm:w-20 sm:h-20 md:w-24 md:h-24 rounded shadow-sm border border-black/[.08] dark:border-white/[.145] transition`}
             />
           );
         })}

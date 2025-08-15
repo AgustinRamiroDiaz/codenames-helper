@@ -161,17 +161,15 @@ export default function CodenamesGrid() {
     setRevealed(Array(totalCells).fill(false));
   }, [totalCells]);
 
-  const regenerate = useCallback(() => {
-    setCells(generateGrid(numGood, numBad, totalCells, seed || "default"));
-    setRevealed(Array(totalCells).fill(false));
-  }, [numGood, numBad, totalCells, seed]);
-
   function onChangeGood(value: string) {
     const parsed = Number.parseInt(value, 10);
     if (Number.isNaN(parsed)) return;
     const clamped = clamp(parsed, 0, totalCells);
     const maxGoodGivenBad = totalCells - numBad;
-    setNumGood(clamp(clamped, 0, maxGoodGivenBad));
+    const nextGood = clamp(clamped, 0, maxGoodGivenBad);
+    setNumGood(nextGood);
+    setCells(generateGrid(nextGood, numBad, totalCells, seed || "default"));
+    setRevealed(Array(totalCells).fill(false));
   }
 
   function onChangeBad(value: string) {
@@ -179,7 +177,10 @@ export default function CodenamesGrid() {
     if (Number.isNaN(parsed)) return;
     const clamped = clamp(parsed, 0, totalCells);
     const maxBadGivenGood = totalCells - numGood;
-    setNumBad(clamp(clamped, 0, maxBadGivenGood));
+    const nextBad = clamp(clamped, 0, maxBadGivenGood);
+    setNumBad(nextBad);
+    setCells(generateGrid(numGood, nextBad, totalCells, seed || "default"));
+    setRevealed(Array(totalCells).fill(false));
   }
 
   function onChangeGridSize(value: string) {
@@ -195,6 +196,12 @@ export default function CodenamesGrid() {
     setNumBad(nextBad);
     setCells(generateGrid(nextGood, nextBad, nextTotal, seed || "default"));
     setRevealed(Array(nextTotal).fill(false));
+  }
+
+  function onSeedChange(nextSeed: string) {
+    setSeed(nextSeed);
+    setCells(generateGrid(numGood, numBad, totalCells, nextSeed || "default"));
+    setRevealed(Array(totalCells).fill(false));
   }
 
   function onRandomizeSeed() {
@@ -236,7 +243,7 @@ export default function CodenamesGrid() {
               type="text"
               inputMode="text"
               value={seed}
-              onChange={(e) => setSeed(e.target.value)}
+              onChange={(e) => onSeedChange(e.target.value)}
               className="w-40 h-10 rounded border border-black/[.08] dark:border-white/[.145] bg-transparent px-3"
               placeholder="e.g. game-night-1"
             />
@@ -269,13 +276,6 @@ export default function CodenamesGrid() {
               {numNeutral}
             </div>
           </div>
-          <button
-            type="button"
-            onClick={regenerate}
-            className="h-10 px-4 rounded bg-foreground text-background text-sm font-medium hover:opacity-90"
-          >
-            Regenerate
-          </button>
           <button
             type="button"
             onClick={onRandomizeSeed}
